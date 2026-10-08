@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Sneha's Makeover - Owner Dashboard</title>
+<link rel="icon" href="images/sneha.png">
+<style>
+  :root{--wine:#5C0F24;--wine-d:#33081A;--gold:#C79A44;--cream:#FFFAF5;--teal:#2F5D53;--line:#e8dccf;--red:#a12929}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--cream);color:#2a1a20}
+  header{background:var(--wine);color:#fff;padding:1rem 1.2rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}
+  header h1{font-size:1.05rem;margin:0;font-weight:600}
+  header small{color:var(--gold);display:block;font-weight:400;font-size:.75rem}
+  button,.btn{font:inherit;cursor:pointer;border:0;border-radius:999px;padding:.5rem 1rem;font-size:.85rem;font-weight:600}
+  .primary{background:var(--wine);color:#fff}
+  .ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
+  .ok{background:var(--teal);color:#fff}
+  .no{background:#fff;color:var(--red);border:1px solid #e3b5b5}
+  .wa{background:#25D366;color:#0b3d1f;text-decoration:none;display:inline-block}
+  main{max-width:900px;margin:0 auto;padding:1rem}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:1rem;margin-bottom:.8rem}
+  #login{max-width:360px;margin:12vh auto;text-align:center}
+  #login input{width:100%;padding:.7rem;border:1px solid var(--line);border-radius:10px;margin:.8rem 0;font-size:1rem}
+  .msg{min-height:1.3em;font-size:.88rem;color:var(--red)}
+  .tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin:.2rem 0 1rem}
+  .tab{background:#fff;border:1px solid var(--line);color:var(--wine)}
+  .tab.active{background:var(--wine);color:#fff;border-color:var(--wine)}
+  .row{display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap;align-items:flex-start}
+  .name{font-weight:700;font-size:1.02rem}
+  .meta{font-size:.88rem;color:#5b4a50;line-height:1.6}
+  .badge{font-size:.72rem;font-weight:700;padding:.2rem .6rem;border-radius:999px}
+  .Pending{background:#fff1d6;color:#8a5a00}
+  .Confirmed{background:#e1f3ea;color:#1d4a3f}
+  .Cancelled{background:#f3e0e0;color:#7d1f1f}
+  .actions{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.7rem}
+  .blockbar{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.8rem}
+  .blockbar input{padding:.55rem;border:1px solid var(--line);border-radius:10px;font-size:.9rem}
+  .blockbar input[type=text]{flex:1;min-width:140px}
+  h2{font-size:1rem;color:var(--wine);margin:1.4rem 0 .6rem}
+  .empty{color:#8a7880;text-align:center;padding:1.5rem}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+
+<section id="login" class="card" hidden>
+  <h1 style="margin:0;color:var(--wine);font-size:1.2rem">Owner Login</h1>
+  <input id="pw" type="password" placeholder="Password" autocomplete="current-password">
+  <div class="msg" id="login-msg"></div>
+  <button class="primary" id="login-btn" style="width:100%">Login</button>
+</section>
+
+<div id="app" hidden>
+  <header>
+    <h1>Sneha's Makeover <small>Booking Dashboard</small></h1>
+    <div style="display:flex;gap:.5rem">
+      <button class="ghost" id="refresh">Refresh</button>
+      <button class="ghost" id="logout">Logout</button>
+    </div>
+  </header>
+  <main>
+    <div class="tabs" id="tabs"></div>
+    <div id="list"></div>
+
+    <h2>Block a date (leave / busy)</h2>
+    <div class="blockbar">
+      <input type="date" id="block-date">
+      <input type="text" id="block-reason" placeholder="Reason (optional)">
+      <button class="primary" id="block-btn">Block date</button>
+    </div>
+    <div id="blocked"></div>
+  </main>
+</div>
+
+<script>
+  // ===== CONFIG: same Web App URL as index.html =====
+  const API_URL = "https://script.google.com/macros/s/AKfycbw11xUKtXL_egDy56XK1Xy30FwvcicdKctb2sgJgodYjrhkYxLWJK5f7t9-CwE5PCDN/exec";
+  // ==================================================
+
+  const $ = (id) => document.getElementById(id);
+  const TABS = ['Upcoming', 'Pending', 'Confirmed', 'Cancelled', 'All'];
+  let token = sessionStorage.getItem('sm_token') || '';
+  let bookings = [];
+  let tab = 'Upcoming';
+
+  async function api(payload) {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ token }, payload))
+    });
+    const data = await res.json();
+    if (data.error === 'unauthorized') { logout(); throw new Error('unauthorized'); }
+    return data;
+  }
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;   // textContent only: customer text can never run as HTML
+    return e;
+  }
+
+  function show(loggedIn) {
+    $('login').hidden = loggedIn;
+    $('app').hidden = !loggedIn;
+  }
+
+  function logout() {
+    token = '';
+    sessionStorage.removeItem('sm_token');
+    show(false);
+  }
+
+  async function login() {
+    $('login-msg').textContent = '';
+    if (!API_URL) { $('login-msg').textContent = 'API_URL is not set in admin.html'; return; }
+    $('login-btn').disabled = true;
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'login', password: $('pw').value })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        token = data.token;
+        sessionStorage.setItem('sm_token', token);
+        $('pw').value = '';
+        show(true);
+        loadAll();
+      } else {
+        const m = { wrong_password: 'Wrong password.', locked: 'Too many tries. Wait 15 minutes.', password_not_set: 'Set ADMIN_PASSWORD in Apps Script first.' };
+        $('login-msg').textContent = m[data.error] || 'Login failed.';
+      }
+    } catch (e) {
+      $('login-msg').textContent = 'Cannot reach the server.';
+    } finally {
+      $('login-btn').disabled = false;
+    }
+  }
+
+  function prettyDate(s) {
+    return new Date(s + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  function todayStr() { return new Date().toLocaleDateString('en-CA'); }
+
+  function renderTabs() {
+    const box = $('tabs');
+    box.textContent = '';
+    TABS.forEach((t) => {
+      const b = el('button', 'tab' + (t === tab ? ' active' : ''), t);
+      b.addEventListener('click', () => { tab = t; renderTabs(); renderList(); });
+      box.appendChild(b);
+    });
+  }
+
+  function visible() {
+    const t = todayStr();
+    return bookings.filter((b) => {
+      if (tab === 'Upcoming') return b.status !== 'Cancelled' && b.date >= t;
+      if (tab === 'All') return true;
+      return b.status === tab;
+    });
+  }
+
+  function waLink(b) {
+    const text = 'Hi ' + b.name + ', your booking (' + b.id + ') for ' + b.service + ' on ' + prettyDate(b.date) +
+      ' is confirmed. - Sneha\'s Makeover';
+    return 'https://wa.me/91' + b.phone + '?text=' + encodeURIComponent(text);
+  }
+
+  function renderList() {
+    const box = $('list');
+    box.textContent = '';
+    const items = visible();
+    if (!items.length) { box.appendChild(el('div', 'empty', 'No bookings here.')); return; }
+    items.forEach((b) => {
+      const card = el('div', 'card');
+      const top = el('div', 'row');
+      const left = el('div');
+      left.appendChild(el('div', 'name', b.name));
+      left.appendChild(el('div', 'meta', prettyDate(b.date) + '  |  ' + b.service));
+      top.appendChild(left);
+      const right = el('div');
+      right.appendChild(el('span', 'badge ' + b.status, b.status));
+      right.appendChild(el('div', 'meta', b.id));
+      top.appendChild(right);
+      card.appendChild(top);
+
+      const meta = el('div', 'meta');
+      const tel = el('a', null, b.phone);
+      tel.href = 'tel:' + b.phone;
+      meta.appendChild(document.createTextNode('Phone: '));
+      meta.appendChild(tel);
+      meta.appendChild(document.createElement('br'));
+      meta.appendChild(document.createTextNode('Location: ' + (b.location || '-')));
+      meta.appendChild(document.createElement('br'));
+      meta.appendChild(document.createTextNode('Note: ' + (b.message || '-')));
+      card.appendChild(meta);
+
+      const act = el('div', 'actions');
+      if (b.status !== 'Confirmed') act.appendChild(btn('Confirm', 'ok', () => setStatus(b.id, 'Confirmed')));
+      if (b.status !== 'Cancelled') act.appendChild(btn('Cancel', 'no', () => {
+        if (confirm('Cancel booking ' + b.id + '?')) setStatus(b.id, 'Cancelled');
+      }));
+      if (b.status === 'Confirmed') {
+        const a = el('a', 'btn wa', 'WhatsApp customer');
+        a.href = waLink(b); a.target = '_blank'; a.rel = 'noopener';
+        act.appendChild(a);
+      }
+      card.appendChild(act);
+      box.appendChild(card);
+    });
+  }
+
+  function btn(label, cls, fn) {
+    const b = el('button', cls, label);
+    b.addEventListener('click', fn);
+    return b;
+  }
+
+  async function setStatus(id, status) {
+    const out = await api({ action: 'setStatus', id, status });
+    if (!out.ok) {
+      alert(out.error === 'date_full' ? 'This date already has a confirmed booking.' : 'Could not update (' + out.error + ')');
+    }
+    loadAll();
+  }
+
+  async function loadAll() {
+    try {
+      const [l, b] = await Promise.all([api({ action: 'list' }), api({ action: 'blocked' })]);
+      if (l.ok) bookings = l.bookings;
+      renderTabs();
+      renderList();
+      renderBlocked(b.ok ? b.blocked : []);
+    } catch (e) { /* logout already handled */ }
+  }
+
+  function renderBlocked(items) {
+    const box = $('blocked');
+    box.textContent = '';
+    if (!items.length) { box.appendChild(el('div', 'empty', 'No blocked dates.')); return; }
+    items.forEach((x) => {
+      const card = el('div', 'card');
+      const r = el('div', 'row');
+      r.appendChild(el('div', 'name', prettyDate(x.date) + (x.reason ? '  -  ' + x.reason : '')));
+      r.appendChild(btn('Unblock', 'no', async () => { await api({ action: 'unblock', date: x.date }); loadAll(); }));
+      card.appendChild(r);
+      box.appendChild(card);
+    });
+  }
+
+  $('login-btn').addEventListener('click', login);
+  $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+  $('logout').addEventListener('click', logout);
+  $('refresh').addEventListener('click', loadAll);
+  $('block-btn').addEventListener('click', async () => {
+    const date = $('block-date').value;
+    if (!date) return;
+    await api({ action: 'block', date, reason: $('block-reason').value });
+    $('block-date').value = ''; $('block-reason').value = '';
+    loadAll();
+  });
+  $('block-date').min = todayStr();
+
+  if (token) { show(true); loadAll(); } else { show(false); }
+</script>
+</body>
+</html>
